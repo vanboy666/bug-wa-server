@@ -9,11 +9,11 @@ app.use(express.urlencoded({ extended: true }));
 // ==================== AUTO-PING SYSTEM ====================
 function keepServerAlive() {
     try {
-        const baseUrl = 'https://bug-wa-server-production.up.railway.app';
+        const baseUrl = 'https://bug-wa-server-production-6d87.up.railway.app';
         const pingUrls = [
-            `${baseUrl}/validate`,
             `${baseUrl}/`,
-            `${baseUrl}/health`
+            `${baseUrl}/health`,
+            `${baseUrl}/getNews`
         ];
         
         pingUrls.forEach(url => {
@@ -32,7 +32,7 @@ function keepServerAlive() {
 const PING_INTERVAL = 4 * 60 * 1000;
 setInterval(keepServerAlive, PING_INTERVAL);
 
-// Ping pertama setelah server start
+// Ping pertama setelah 10 detik
 setTimeout(keepServerAlive, 10000);
 
 // ==================== DATABASE & LOGIC ====================
@@ -61,7 +61,7 @@ let users = {
 let servers = [];
 let logs = [];
 
-// Helper functions
+// Helper functions - FIXED VERSION
 const randomHex = (len) => [...Array(len)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
 const randomString = (len) => [...Array(len)].map(() => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]).join('');
 
@@ -90,17 +90,16 @@ app.get('/', (req, res) => {
     res.json({
         app: 'CYBERENG REPLICA SERVER',
         status: 'online',
-        version: '2.0',
+        version: '1.0.0',
         server_time: new Date().toISOString(),
         owner: 'ORGAN_GANTENG',
         tunnel_url: req.headers.host,
-        auto_ping: 'ACTIVE (4min interval)',
         endpoints: {
             public: ['/validate', '/autoRegister', '/sendBug', '/refreshCoins', '/redeem'],
             developer: ['/dev', '/dev/users', '/dev/addUser', '/dev/setRole'],
             owner: ['/owner/addReseller', '/owner/addMember', '/owner/listUsers'],
             reseller: ['/reseller/addMember'],
-            custom: ['/addServer', '/deleteUser', '/checkUpdate', '/getNews', '/health']
+            custom: ['/addServer', '/deleteUser', '/checkUpdate', '/getNews']
         }
     });
 });
@@ -258,7 +257,7 @@ app.post('/validate', (req, res) => {
     const { username, password, androidId } = req.body;
     const user = users[username];
 
-    console.log(`[VALIDATE] Username: ${username}, AndroidID: ${androidId}`);
+    console.log(`[VALIDATE] Username: ${username}, AndroidID: ${androidId || 'N/A'}`);
 
     if (!user || user.password !== password) {
         return res.json({ valid: false, message: 'Invalid credentials' });
@@ -419,7 +418,7 @@ app.post('/addServer', (req, res) => {
 
     res.json({
         success: true,
-        message: `✅ Server ${server_ip}:${server_port} added successfully!`,
+        message: `✅ Server ${server_ip || 'N/A'}:${server_port || 'N/A'} added successfully!`,
         server: newServer,
         total_servers: servers.length
     });
@@ -499,21 +498,20 @@ app.listen(port, '0.0.0.0', () => {
 ║    Mode: FULL HIERARCHY SYSTEM                          ║
 ║    Developer: developer / dev2024                       ║
 ║    Owner: owner1 / owner123                             ║
-║    Tunnel: bug-wa-server-production.up.railway.app      ║
+║    URL: https://bug-wa-server-production-6d87.up.railway.app ║
 ╚══════════════════════════════════════════════════════════╝
     `);
     
     console.log(`📡 Role Hierarchy: Developer (4) → Owner (3) → Reseller (2) → Member (1)`);
     console.log(`🔗 Developer Dashboard: http://0.0.0.0:${port}/dev?key=dev007dev007dev0`);
     console.log(`🌐 Public Endpoints:`);
-    console.log(`   ✅ /validate      - User authentication`);
+    console.log(`   ✅ /validate      - User authentication (POST)`);
     console.log(`   ✅ /addServer     - Add game server`);
     console.log(`   ✅ /deleteUser    - Delete user (dev only)`);
     console.log(`   ✅ /sendBug       - Send bug/exploit`);
     console.log(`   ✅ /refreshCoins  - Check coin balance`);
     console.log(`   ✅ /health        - Auto-ping system check`);
     console.log(`\n📱 Server ready for APK connections!`);
-    console.log(`💡 APK should connect to: https://bug-wa-server-production.up.railway.app`);
     console.log(`🔄 Auto-ping system ACTIVE (every 4 minutes)`);
     
     // Initial keep-alive
