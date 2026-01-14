@@ -22,7 +22,7 @@ let users = {
         key: '0000000000000000',
         role: 'owner',
         coins: 500000,
-        expired: '2026-12-31',
+        expired: '2299-20-31',
         createdBy: 'developer'
     }
 };
@@ -143,7 +143,7 @@ app.post('/owner/addReseller', requireRole('owner'), (req, res) => {
         key: randomHex(16),
         role: 'reseller',
         coins: 100000,
-        expired: '2025-12-31',
+        expired: '2299-12-31',
         createdBy: req.user.username
     };
 
@@ -163,8 +163,8 @@ app.post('/owner/addMember', requireRole('owner'), (req, res) => {
         password: password || 'member123',
         key: randomHex(16),
         role: 'member',
-        coins: 0,
-        expired: '2024-12-31',
+        coins: 1000,
+        expired: '2050-12-31',
         createdBy: req.user.username
     };
 
