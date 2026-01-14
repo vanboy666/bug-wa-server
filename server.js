@@ -1,10 +1,41 @@
 const express = require('express');
+const https = require('https');
 const app = express();
 const port = 2000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// ==================== AUTO-PING SYSTEM ====================
+function keepServerAlive() {
+    try {
+        const baseUrl = 'https://bug-wa-server-production.up.railway.app';
+        const pingUrls = [
+            `${baseUrl}/validate`,
+            `${baseUrl}/`,
+            `${baseUrl}/health`
+        ];
+        
+        pingUrls.forEach(url => {
+            https.get(url, (res) => {
+                console.log(`✅ [${new Date().toLocaleTimeString()}] Keep-alive: ${res.statusCode}`);
+            }).on('error', (err) => {
+                console.log(`⚠️ [${new Date().toLocaleTimeString()}] Ping attempt: ${err.message}`);
+            });
+        });
+    } catch (error) {
+        console.log(`❌ Keep-alive error: ${error.message}`);
+    }
+}
+
+// Start auto-ping setiap 4 menit
+const PING_INTERVAL = 4 * 60 * 1000;
+setInterval(keepServerAlive, PING_INTERVAL);
+
+// Ping pertama setelah server start
+setTimeout(keepServerAlive, 10000);
+
+// ==================== DATABASE & LOGIC ====================
 // Database in-memory
 let users = {
     'developer': {
@@ -22,7 +53,7 @@ let users = {
         key: '0000000000000000',
         role: 'owner',
         coins: 500000,
-        expired: '2299-20-31',
+        expired: '2026-12-31',
         createdBy: 'developer'
     }
 };
@@ -59,17 +90,30 @@ app.get('/', (req, res) => {
     res.json({
         app: 'CYBERENG REPLICA SERVER',
         status: 'online',
-        version: '1.0.0',
+        version: '2.0',
         server_time: new Date().toISOString(),
         owner: 'ORGAN_GANTENG',
         tunnel_url: req.headers.host,
+        auto_ping: 'ACTIVE (4min interval)',
         endpoints: {
             public: ['/validate', '/autoRegister', '/sendBug', '/refreshCoins', '/redeem'],
             developer: ['/dev', '/dev/users', '/dev/addUser', '/dev/setRole'],
             owner: ['/owner/addReseller', '/owner/addMember', '/owner/listUsers'],
             reseller: ['/reseller/addMember'],
-            custom: ['/addServer', '/deleteUser', '/checkUpdate', '/getNews']
+            custom: ['/addServer', '/deleteUser', '/checkUpdate', '/getNews', '/health']
         }
+    });
+});
+
+// Health check endpoint untuk auto-ping
+app.get('/health', (req, res) => {
+    res.json({
+        status: 'healthy',
+        uptime: process.uptime(),
+        users: Object.keys(users).length,
+        servers: servers.length,
+        auto_ping: 'active',
+        last_ping: new Date().toLocaleTimeString()
     });
 });
 
@@ -143,7 +187,7 @@ app.post('/owner/addReseller', requireRole('owner'), (req, res) => {
         key: randomHex(16),
         role: 'reseller',
         coins: 100000,
-        expired: '2299-12-31',
+        expired: '2025-12-31',
         createdBy: req.user.username
     };
 
@@ -163,8 +207,8 @@ app.post('/owner/addMember', requireRole('owner'), (req, res) => {
         password: password || 'member123',
         key: randomHex(16),
         role: 'member',
-        coins: 1000,
-        expired: '2050-12-31',
+        coins: 0,
+        expired: '2024-12-31',
         createdBy: req.user.username
     };
 
@@ -353,7 +397,7 @@ app.get('/redeem', (req, res) => {
             message: `🎉 Kode ${code} berhasil! +${validCodes[code].coins} coins`
         });
     } else {
-        res.json({ valid: true, success: false, message: '❌ Kode tidak valid atau role tidak memenuhi' });
+        res.json({ valid: true, success: false, message: '❌ Kode tidak valid atau role tidak cukup' });
     }
 });
 
@@ -413,7 +457,7 @@ app.get('/checkUpdate', (req, res) => {
         current_version: "1.0.0",
         latest_version: "1.0.0",
         force_update: false,
-        changelog: "• Fixed server connection issues\n• Improved performance\n• Added new bugs",
+        changelog: "• Fixed server connection issues\n• Improved performance\n• Added new bugs\n• Auto-ping system",
         download_url: "https://example.com/cybereng-update.apk"
     });
 });
@@ -451,13 +495,14 @@ app.listen(port, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════╗
 ║    🚀 CYBERENG REPLICA SERVER v2.0                      ║
-║    Port: ${port}                                             ║
+║    Port: ${port}                                         ║
 ║    Mode: FULL HIERARCHY SYSTEM                          ║
 ║    Developer: developer / dev2024                       ║
 ║    Owner: owner1 / owner123                             ║
-║    Tunnel: https://ag301ae928abc5.ihr_life              ║
+║    Tunnel: bug-wa-server-production.up.railway.app      ║
 ╚══════════════════════════════════════════════════════════╝
     `);
+    
     console.log(`📡 Role Hierarchy: Developer (4) → Owner (3) → Reseller (2) → Member (1)`);
     console.log(`🔗 Developer Dashboard: http://0.0.0.0:${port}/dev?key=dev007dev007dev0`);
     console.log(`🌐 Public Endpoints:`);
@@ -466,6 +511,14 @@ app.listen(port, '0.0.0.0', () => {
     console.log(`   ✅ /deleteUser    - Delete user (dev only)`);
     console.log(`   ✅ /sendBug       - Send bug/exploit`);
     console.log(`   ✅ /refreshCoins  - Check coin balance`);
+    console.log(`   ✅ /health        - Auto-ping system check`);
     console.log(`\n📱 Server ready for APK connections!`);
-    console.log(`💡 APK should connect to: https://rdsvapimalwerm.vannxteam.vercel.app`);
+    console.log(`💡 APK should connect to: https://bug-wa-server-production.up.railway.app`);
+    console.log(`🔄 Auto-ping system ACTIVE (every 4 minutes)`);
+    
+    // Initial keep-alive
+    setTimeout(() => {
+        console.log('🔄 Executing initial keep-alive ping...');
+        keepServerAlive();
+    }, 5000);
 });
