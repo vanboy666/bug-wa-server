@@ -498,7 +498,7 @@ app.listen(port, '0.0.0.0', () => {
 ║    Mode: FULL HIERARCHY SYSTEM                          ║
 ║    Developer: developer / dev2024                       ║
 ║    Owner: owner1 / owner123                             ║
-║    URL: https://bug-wa-server-production-6d87.up.railway.app ║
+║    URL: https://bug-wa-serveren.up.railway.app ║
 ╚══════════════════════════════════════════════════════════╝
     `);
     
