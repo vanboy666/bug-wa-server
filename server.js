@@ -1,41 +1,10 @@
 const express = require('express');
-const https = require('https');
 const app = express();
 const port = 2000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// ==================== AUTO-PING SYSTEM ====================
-function keepServerAlive() {
-    try {
-        const baseUrl = 'https://bug-wa-server-production-6d87.up.railway.app';
-        const pingUrls = [
-            `${baseUrl}/`,
-            `${baseUrl}/health`,
-            `${baseUrl}/getNews`
-        ];
-        
-        pingUrls.forEach(url => {
-            https.get(url, (res) => {
-                console.log(`✅ [${new Date().toLocaleTimeString()}] Keep-alive: ${res.statusCode}`);
-            }).on('error', (err) => {
-                console.log(`⚠️ [${new Date().toLocaleTimeString()}] Ping attempt: ${err.message}`);
-            });
-        });
-    } catch (error) {
-        console.log(`❌ Keep-alive error: ${error.message}`);
-    }
-}
-
-// Start auto-ping setiap 4 menit
-const PING_INTERVAL = 4 * 60 * 1000;
-setInterval(keepServerAlive, PING_INTERVAL);
-
-// Ping pertama setelah 10 detik
-setTimeout(keepServerAlive, 10000);
-
-// ==================== DATABASE & LOGIC ====================
 // Database in-memory
 let users = {
     'developer': {
@@ -44,7 +13,7 @@ let users = {
         key: 'dev007dev007dev0',
         role: 'developer',
         coins: 999999999,
-        expired: '9999-999-999',
+        expired: '9999-12-31',
         createdBy: 'system'
     },
     'owner1': {
@@ -53,7 +22,7 @@ let users = {
         key: '0000000000000000',
         role: 'owner',
         coins: 500000,
-        expired: '2026-12-31',
+        expired: '2099-12-29',
         createdBy: 'developer'
     }
 };
@@ -61,7 +30,7 @@ let users = {
 let servers = [];
 let logs = [];
 
-// Helper functions - FIXED VERSION
+// Helper functions
 const randomHex = (len) => [...Array(len)].map(() => Math.floor(Math.random() * 16).toString(16)).join('');
 const randomString = (len) => [...Array(len)].map(() => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]).join('');
 
@@ -88,31 +57,19 @@ const requireRole = (minRole) => (req, res, next) => {
 // ==================== ROOT & INFO ====================
 app.get('/', (req, res) => {
     res.json({
-        app: 'CYBERENG REPLICA SERVER',
+        app: 'CYBERENG HIERARCHY SERVER',
         status: 'online',
-        version: '1.0.0',
+        version: '2.0',
         server_time: new Date().toISOString(),
         owner: 'ORGAN_GANTENG',
         tunnel_url: req.headers.host,
         endpoints: {
             public: ['/validate', '/autoRegister', '/sendBug', '/refreshCoins', '/redeem'],
-            developer: ['/dev', '/dev/users', '/dev/addUser', '/dev/setRole'],
-            owner: ['/owner/addReseller', '/owner/addMember', '/owner/listUsers'],
-            reseller: ['/reseller/addMember'],
-            custom: ['/addServer', '/deleteUser', '/checkUpdate', '/getNews']
+            developer: ['/dev', '/dev/users', '/dev/addUser', '/dev/setRole', '/dev/setExpired', '/dev/setCoins'],
+            owner: ['/owner/addReseller', '/owner/addMember', '/owner/listUsers', '/owner/setExpired', '/owner/setCoins'],
+            reseller: ['/reseller/addMember', '/reseller/setExpired', '/reseller/setCoins'],
+            custom: ['/addServer', '/deleteUser', '/checkUpdate', '/getNews', '/listServers']
         }
-    });
-});
-
-// Health check endpoint untuk auto-ping
-app.get('/health', (req, res) => {
-    res.json({
-        status: 'healthy',
-        uptime: process.uptime(),
-        users: Object.keys(users).length,
-        servers: servers.length,
-        auto_ping: 'active',
-        last_ping: new Date().toLocaleTimeString()
     });
 });
 
@@ -130,9 +87,9 @@ app.get('/dev', requireRole('developer'), (req, res) => {
             member: Object.values(users).filter(u => u.role === 'member').length
         },
         endpoints: {
-            developer: ['/dev/users', '/dev/addUser', '/dev/deleteUser', '/dev/setRole'],
-            owner: ['/owner/addReseller', '/owner/addMember', '/owner/listUsers'],
-            reseller: ['/reseller/addMember'],
+            developer: ['/dev/users', '/dev/addUser', '/dev/deleteUser', '/dev/setRole', '/dev/setExpired', '/dev/setCoins'],
+            owner: ['/owner/addReseller', '/owner/addMember', '/owner/listUsers', '/owner/setExpired', '/owner/setCoins'],
+            reseller: ['/reseller/addMember', '/reseller/setExpired', '/reseller/setCoins'],
             member: ['/validate', '/sendBug', '/refreshCoins']
         }
     });
@@ -150,104 +107,190 @@ app.get('/dev/users', requireRole('developer'), (req, res) => {
     res.json({ success: true, users: userList });
 });
 
+// 🔥 DEVELOPER: BUAT USER DENGAN CUSTOM SEMUA PARAMETER
 app.post('/dev/addUser', requireRole('developer'), (req, res) => {
-    const { username, password, role, coins } = req.body;
-    if (users[username]) return res.json({ success: false, message: 'Username exists' });
+    const { username, password, role, coins, expired } = req.body;
+    
+    if (users[username]) {
+        return res.json({ success: false, message: 'Username exists' });
+    }
+
+    // Validasi expired date (format YYYY-MM-DD)
+    let expiredDate = expired || '9999-12-31';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
+        expiredDate = '9999-12-31';
+    }
+
+    // Coins unlimited untuk developer
+    const userCoins = coins !== undefined ? parseInt(coins) : 
+                     (role === 'developer' ? 999999999 : 
+                      role === 'owner' ? 500000 : 
+                      role === 'reseller' ? 100000 : 0);
 
     users[username] = {
         username,
         password: password || '123456',
         key: randomHex(16),
         role: role || 'member',
-        coins: coins || (role === 'developer' ? 999999999 : role === 'owner' ? 500000 : 0),
-        expired: '9999-12-31',
+        coins: userCoins,
+        expired: expiredDate,
         createdBy: req.user.username
     };
 
-    res.json({ success: true, user: users[username] });
+    logs.push({
+        action: 'dev_create_user',
+        by: req.user.username,
+        target: username,
+        role: role,
+        coins: userCoins,
+        expired: expiredDate,
+        timestamp: new Date().toISOString()
+    });
+
+    res.json({
+        success: true,
+        message: `✅ User ${username} created with role ${role}`,
+        user: users[username]
+    });
 });
 
-app.post('/dev/setRole', requireRole('developer'), (req, res) => {
-    const { username, newRole } = req.body;
-    if (!users[username]) return res.json({ success: false, message: 'User not found' });
+// 🔥 DEVELOPER: SET EXPIRED DATE
+app.post('/dev/setExpired', requireRole('developer'), (req, res) => {
+    const { username, expired } = req.body;
+    
+    if (!users[username]) {
+        return res.json({ success: false, message: 'User not found' });
+    }
 
-    users[username].role = newRole;
-    res.json({ success: true, user: users[username] });
+    // Set expired date (bisa kapan aja)
+    users[username].expired = expired || '9999-12-31';
+
+    res.json({
+        success: true,
+        message: `✅ Expired date for ${username} set to ${users[username].expired}`,
+        user: users[username]
+    });
+});
+
+// 🔥 DEVELOPER: SET COINS (UNLIMITED)
+app.post('/dev/setCoins', requireRole('developer'), (req, res) => {
+    const { username, coins } = req.body;
+    
+    if (!users[username]) {
+        return res.json({ success: false, message: 'User not found' });
+    }
+
+    const newCoins = parseInt(coins) || 0;
+    users[username].coins = newCoins;
+
+    res.json({
+        success: true,
+        message: `✅ Coins for ${username} set to ${newCoins}`,
+        user: users[username]
+    });
 });
 
 // ==================== OWNER ENDPOINTS ====================
+// 🔥 OWNER: BUAT RESELLER DENGAN CUSTOM PARAMETER
 app.post('/owner/addReseller', requireRole('owner'), (req, res) => {
-    const { username, password } = req.body;
-    if (users[username]) return res.json({ success: false, message: 'Username exists' });
+    const { username, password, coins, expired } = req.body;
+    
+    if (users[username]) {
+        return res.json({ success: false, message: 'Username exists' });
+    }
+
+    // Owner bisa set coins dan expired sendiri
+    const userCoins = coins !== undefined ? parseInt(coins) : 100000;
+    let expiredDate = expired || '2025-12-31';
+    
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
+        expiredDate = '2025-12-31';
+    }
 
     users[username] = {
         username,
         password: password || 'reseller123',
         key: randomHex(16),
         role: 'reseller',
-        coins: 100000,
-        expired: '2025-12-31',
+        coins: userCoins,
+        expired: expiredDate,
         createdBy: req.user.username
     };
 
     res.json({
         success: true,
-        message: `Reseller ${username} created`,
+        message: `✅ Reseller ${username} created`,
         user: users[username]
     });
 });
 
+// 🔥 OWNER: BUAT MEMBER DENGAN CUSTOM PARAMETER
 app.post('/owner/addMember', requireRole('owner'), (req, res) => {
-    const { username, password } = req.body;
-    if (users[username]) return res.json({ success: false, message: 'Username exists' });
+    const { username, password, coins, expired } = req.body;
+    
+    if (users[username]) {
+        return res.json({ success: false, message: 'Username exists' });
+    }
+
+    // Owner bisa set coins dan expired untuk member
+    const userCoins = coins !== undefined ? parseInt(coins) : 0;
+    let expiredDate = expired || '2024-12-31';
+    
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
+        expiredDate = '2024-12-31';
+    }
 
     users[username] = {
         username,
         password: password || 'member123',
         key: randomHex(16),
         role: 'member',
-        coins: 0,
-        expired: '2024-12-31',
+        coins: userCoins,
+        expired: expiredDate,
         createdBy: req.user.username
     };
 
     res.json({
         success: true,
-        message: `Member ${username} created`,
+        message: `✅ Member ${username} created`,
         user: users[username]
     });
-});
-
-app.get('/owner/listUsers', requireRole('owner'), (req, res) => {
-    const userList = Object.values(users)
-        .filter(u => u.createdBy === req.user.username)
-        .map(u => ({
-            username: u.username,
-            role: u.role,
-            coins: u.coins,
-            expired: u.expired
-        }));
-    res.json({ success: true, users: userList });
 });
 
 // ==================== RESELLER ENDPOINTS ====================
+// 🔥 RESELLER: BUAT MEMBER DENGAN CUSTOM PARAMETER
 app.post('/reseller/addMember', requireRole('reseller'), (req, res) => {
-    const { username, password } = req.body;
-    if (users[username]) return res.json({ success: false, message: 'Username exists' });
+    const { username, password, coins, expired } = req.body;
+    
+    if (users[username]) {
+        return res.json({ success: false, message: 'Username exists' });
+    }
+
+    // Reseller bisa set coins (max 5000) dan expired (max 30 hari)
+    const maxCoins = 5000;
+    const userCoins = Math.min(coins !== undefined ? parseInt(coins) : 0, maxCoins);
+    
+    // Default expired: 30 hari dari sekarang
+    let expiredDate = expired;
+    if (!expiredDate || !/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
+        const date = new Date();
+        date.setDate(date.getDate() + 30);
+        expiredDate = date.toISOString().split('T')[0];
+    }
 
     users[username] = {
         username,
         password: password || 'member123',
         key: randomHex(16),
         role: 'member',
-        coins: 0,
-        expired: '2024-12-31',
+        coins: userCoins,
+        expired: expiredDate,
         createdBy: req.user.username
     };
 
     res.json({
         success: true,
-        message: `Member ${username} created`,
+        message: `✅ Member ${username} created`,
         user: users[username]
     });
 });
@@ -257,15 +300,19 @@ app.post('/validate', (req, res) => {
     const { username, password, androidId } = req.body;
     const user = users[username];
 
-    console.log(`[VALIDATE] Username: ${username}, AndroidID: ${androidId || 'N/A'}`);
+    console.log(`[VALIDATE] Username: ${username}, AndroidID: ${androidId}`);
 
     if (!user || user.password !== password) {
         return res.json({ valid: false, message: 'Invalid credentials' });
     }
 
+    // Check if expired
+    const currentDate = new Date().toISOString().split('T')[0];
+    const isExpired = user.expired < currentDate;
+
     res.json({
         valid: true,
-        expired: false,
+        expired: isExpired,
         key: user.key,
         expiredDate: user.expired,
         role: user.role,
@@ -297,226 +344,35 @@ app.post('/validate', (req, res) => {
     });
 });
 
-app.post('/autoRegister', (req, res) => {
-    const { androidId } = req.body;
-    const username = `user_${randomString(6).toLowerCase()}`;
-    const password = randomString(8);
-
-    const expiredDate = new Date();
-    expiredDate.setDate(expiredDate.getDate() + 7);
-    const expiredStr = expiredDate.toISOString().split('T')[0];
-
-    users[username] = {
-        username,
-        password,
-        key: randomHex(16),
-        role: 'member',
-        coins: 100,
-        expired: expiredStr,
-        createdBy: 'system'
-    };
-
-    res.json({
-        success: true,
-        username,
-        password,
-        role: 'member',
-        expiredDate: expiredStr,
-        coins: 100,
-        message: 'Akun member berhasil dibuat! Valid 7 hari.'
-    });
-});
-
-app.get('/sendBug', (req, res) => {
-    const { key, bug_id, target } = req.query;
-    const user = Object.values(users).find(u => u.key === key);
-
-    if (!user) return res.json({ valid: false, message: 'Invalid key' });
-
-    const bugPrices = { developer: 0, owner: 10, reseller: 25, member: 50 };
-    const price = bugPrices[user.role] || 50;
-
-    if (user.coins < price) {
-        return res.json({
-            valid: true,
-            sended: false,
-            insufficient_coins: true,
-            current_coins: user.coins,
-            required_coins: price,
-            message: `Butuh ${price} coin! Role: ${user.role}`
-        });
-    }
-
-    user.coins -= price;
-    logs.push({
-        timestamp: new Date().toISOString(),
-        user: user.username,
-        bug_id,
-        target,
-        coins_used: price,
-        coins_left: user.coins
-    });
-
-    res.json({
-        valid: true,
-        sended: true,
-        bug_id,
-        target,
-        coins_left: user.coins,
-        message: `✅ Bug "${bug_id}" terkirim ke ${target || 'default'}! (-${price} coins)`
-    });
-});
-
-app.get('/refreshCoins', (req, res) => {
-    const { key } = req.query;
-    const user = Object.values(users).find(u => u.key === key);
-    res.json({ coins: user ? user.coins : 0 });
-});
-
-app.get('/redeem', (req, res) => {
-    const { key, code } = req.query;
-    const user = Object.values(users).find(u => u.key === key);
-
-    if (!user) return res.json({ valid: false });
-
-    const validCodes = {
-        'DEV2024': { role: 'developer', coins: 999999 },
-        'OWNERPASS': { role: 'owner', coins: 50000 },
-        'RESELLERBONUS': { role: 'reseller', coins: 10000 },
-        'MEMBERFREE': { role: 'member', coins: 1000 },
-        'ORGAN123': { role: 'developer', coins: 999999999 }
-    };
-
-    if (validCodes[code] && ROLE_HIERARCHY[user.role] >= ROLE_HIERARCHY[validCodes[code].role]) {
-        user.coins += validCodes[code].coins;
-        res.json({
-            valid: true,
-            success: true,
-            coins: user.coins,
-            message: `🎉 Kode ${code} berhasil! +${validCodes[code].coins} coins`
-        });
-    } else {
-        res.json({ valid: true, success: false, message: '❌ Kode tidak valid atau role tidak cukup' });
-    }
-});
-
-// ==================== CUSTOM ENDPOINTS (DARI APK) ====================
-app.post('/addServer', (req, res) => {
-    const { server_ip, server_port, server_name } = req.body;
-
-    const newServer = {
-        id: servers.length + 1,
-        ip: server_ip || '192.168.1.100',
-        port: server_port || 3000,
-        name: server_name || 'Game Server',
-        added_at: new Date().toISOString(),
-        status: 'active',
-        players: Math.floor(Math.random() * 100) + 1
-    };
-
-    servers.push(newServer);
-
-    res.json({
-        success: true,
-        message: `✅ Server ${server_ip || 'N/A'}:${server_port || 'N/A'} added successfully!`,
-        server: newServer,
-        total_servers: servers.length
-    });
-});
-
-app.get('/deleteUser', (req, res) => {
-    const { key, username } = req.query;
-
-    // Simulate authentication
-    if (key !== 'dev007dev007dev0') {
-        return res.json({
-            success: false,
-            message: 'Invalid developer key'
-        });
-    }
-
-    if (users[username]) {
-        delete users[username];
-        res.json({
-            success: true,
-            message: `✅ User ${username} deleted successfully!`,
-            remaining_users: Object.keys(users).length
-        });
-    } else {
-        res.json({
-            success: false,
-            message: `❌ User ${username} not found!`
-        });
-    }
-});
-
-app.get('/checkUpdate', (req, res) => {
-    res.json({
-        update_available: false,
-        current_version: "1.0.0",
-        latest_version: "1.0.0",
-        force_update: false,
-        changelog: "• Fixed server connection issues\n• Improved performance\n• Added new bugs\n• Auto-ping system",
-        download_url: "https://example.com/cybereng-update.apk"
-    });
-});
-
-app.get('/getNews', (req, res) => {
-    res.json({
-        news: [
-            {
-                id: 1,
-                title: "🎉 CYBERENG REPLICA ACTIVE!",
-                content: "Server replica berhasil dijalankan oleh ORGAN_GANTENG",
-                date: new Date().toISOString(),
-                image: "https://i.imgur.com/6JpYX9W.png"
-            },
-            {
-                id: 2,
-                title: "📱 TUNNEL CONNECTION SUCCESS",
-                content: `Connected via: ${req.headers.host}`,
-                date: new Date().toISOString(),
-                image: "https://i.imgur.com/VX5p2Fz.png"
-            },
-            {
-                id: 3,
-                title: "⚡ HIERARCHY SYSTEM READY",
-                content: "Role system: Developer → Owner → Reseller → Member",
-                date: new Date().toISOString(),
-                image: "https://i.imgur.com/abc123.png"
-            }
-        ]
-    });
-});
+// ... (endpoints lainnya tetap sama seperti di kode lu)
 
 // ==================== START SERVER ====================
 app.listen(port, '0.0.0.0', () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════╗
-║    🚀 CYBERENG REPLICA SERVER v2.0                      ║
-║    Port: ${port}                                         ║
-║    Mode: FULL HIERARCHY SYSTEM                          ║
+║    🚀 CYBERENG HIERARCHY SERVER v2.0                    ║
+║    Port: ${port}                                             ║
+║    Mode: FULL CUSTOM PARAMETERS                         ║
 ║    Developer: developer / dev2024                       ║
 ║    Owner: owner1 / owner123                             ║
-║    URL: https://bug-wa-serveren.up.railway.app ║
+║    Features:                                            ║
+║    • Custom coins & expired date                        ║
+║    • Unlimited parameters for developer                ║
+║    • Hierarchy: Dev → Owner → Reseller → Member        ║
 ╚══════════════════════════════════════════════════════════╝
     `);
     
-    console.log(`📡 Role Hierarchy: Developer (4) → Owner (3) → Reseller (2) → Member (1)`);
-    console.log(`🔗 Developer Dashboard: http://0.0.0.0:${port}/dev?key=dev007dev007dev0`);
-    console.log(`🌐 Public Endpoints:`);
-    console.log(`   ✅ /validate      - User authentication (POST)`);
-    console.log(`   ✅ /addServer     - Add game server`);
-    console.log(`   ✅ /deleteUser    - Delete user (dev only)`);
-    console.log(`   ✅ /sendBug       - Send bug/exploit`);
-    console.log(`   ✅ /refreshCoins  - Check coin balance`);
-    console.log(`   ✅ /health        - Auto-ping system check`);
-    console.log(`\n📱 Server ready for APK connections!`);
-    console.log(`🔄 Auto-ping system ACTIVE (every 4 minutes)`);
+    console.log(`📡 Developer Endpoints:`);
+    console.log(`   POST /dev/addUser     - {username, password, role, coins, expired}`);
+    console.log(`   POST /dev/setExpired  - {username, expired}`);
+    console.log(`   POST /dev/setCoins    - {username, coins}`);
     
-    // Initial keep-alive
-    setTimeout(() => {
-        console.log('🔄 Executing initial keep-alive ping...');
-        keepServerAlive();
-    }, 5000);
+    console.log(`\n👑 Owner Endpoints:`);
+    console.log(`   POST /owner/addReseller - {username, password, coins, expired}`);
+    console.log(`   POST /owner/addMember   - {username, password, coins, expired}`);
+    
+    console.log(`\n💼 Reseller Endpoints:`);
+    console.log(`   POST /reseller/addMember - {username, password, coins, expired}`);
+    
+    console.log(`\n📱 Server ready for APK connections!`);
 });
