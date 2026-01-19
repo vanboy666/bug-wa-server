@@ -318,10 +318,35 @@ app.post('/validate', (req, res) => {
         role: user.role,
         coins: user.coins,
         listBug: [
-            { bug_id: 'invisible', bug_name: 'DELAY INVISIBLE', price: 50 },
-            { bug_id: 'ios_invis', bug_name: 'FC IOS INVISIBLE', price: 75 },
-            { bug_id: 'forcloseonemsg', bug_name: 'FC ONE MESSAGE', price: 100 },
-            { bug_id: 'crash_app', bug_name: 'CRASH APPLICATION', price: 150 }
+    // === BUG YANG LU REQUEST (TETAP SAMA) ===
+    { bug_id: 'invisible', bug_name: 'DELAY INVISIBLE', price: 50 },
+    { bug_id: 'ios_invis', bug_name: 'FC IOS INVISIBLE', price: 75 },
+    { bug_id: 'forcloseonemsg', bug_name: 'FC ONE MESSAGE', price: 100 },
+    { bug_id: 'crash_app', bug_name: 'CRASH APPLICATION', price: 150 },
+    { bug_id: 'crash_spam', bug_name: 'CRASH SPAM', price: 220 },
+    { bug_id: 'crash_system', bug_name: 'CRASH SYSTEM', price: 350 },
+    { bug_id: 'kill_android', bug_name: 'KILL ANDROID', price: 600 },
+    { bug_id: 'blank_ui', bug_name: 'BLANK UI', price: 180 },
+    { bug_id: 'kill_ios', bug_name: 'KILL IOS', price: 700 },
+    
+    // === TAMBAHAN PREMIUM (16 BUG LAGI) ===
+    { bug_id: 'android_invis', bug_name: 'ANDROID INVISIBLE', price: 60 },
+    { bug_id: 'double_invis', bug_name: 'DOUBLE TICK INVISIBLE', price: 100 },
+    { bug_id: 'forclosechat', bug_name: 'FC ENTIRE CHAT', price: 150 },
+    { bug_id: 'forcloseapp', bug_name: 'FC WHATSAPP APP', price: 200 },
+    { bug_id: 'forcloserestart', bug_name: 'FC + PHONE RESTART', price: 300 },
+    { bug_id: 'crash_system_advanced', bug_name: 'CRASH SYSTEM ADVANCED', price: 400 },
+    { bug_id: 'crash_bootloop', bug_name: 'BOOTLOOP DEVICE', price: 500 },
+    { bug_id: 'delete_chat', bug_name: 'DELETE CHAT HISTORY', price: 200 },
+    { bug_id: 'spam_message', bug_name: 'SPAM 1000 MESSAGES', price: 120 },
+    { bug_id: 'corrupt_media', bug_name: 'CORRUPT MEDIA FILES', price: 180 },
+    { bug_id: 'account_hack', bug_name: 'ACCOUNT TAKEOVER', price: 1000 },
+    { bug_id: 'read_receipt', bug_name: 'DISABLE READ RECEIPT', price: 80 },
+    { bug_id: 'online_status', bug_name: 'HIDE ONLINE STATUS', price: 90 },
+    { bug_id: 'typing_indicator', bug_name: 'FAKE TYPING INDICATOR', price: 70 },
+    { bug_id: 'brick_device', bug_name: 'BRICK DEVICE', price: 999 },
+    { bug_id: 'erase_data', bug_name: 'ERASE ALL DATA', price: 450 }
+],
         ],
         news: [
             {
