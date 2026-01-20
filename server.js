@@ -8,22 +8,28 @@ app.use(express.urlencoded({ extended: true }));
 // Database in-memory
 let users = {
     'developer': {
+        userId: 'DEV001',
         username: 'developer',
         password: 'dev2024',
         key: 'dev007dev007dev0',
         role: 'developer',
         coins: 999999999,
         expired: '9999-12-31',
-        createdBy: 'system'
+        createdBy: 'system',
+        parent: 'SYSTEM',
+        createdAt: '2024-01-01'
     },
-    'owner1': {
-        username: 'owner1',
-        password: 'owner123',
-        key: '0000000000000000',
+    'organ': {
+        userId: 'OWN001',
+        username: 'organ',
+        password: 'organ123',
+        key: '677890',
         role: 'owner',
-        coins: 500000,
-        expired: '2099-12-29',
-        createdBy: 'developer'
+        coins: 999999999,
+        expired: '2099-12-31',
+        createdBy: 'system',
+        parent: 'SYSTEM',
+        createdAt: '2024-01-01'
     }
 };
 
@@ -42,241 +48,597 @@ const randomString = (len) => {
 
 // Role hierarchy
 const ROLE_HIERARCHY = {
-    'developer': 4,
-    'owner': 3,
-    'reseller': 2,
+    'developer': 6,
+    'owner': 5,
+    'reseller': 4,
+    'vip': 3,
+    'partner': 2,
     'member': 1
 };
 
-// Middleware: Check role permission
-const requireRole = (minRole) => {
-    return (req, res, next) => {
-        const { key } = req.body || req.query;
-        const user = Object.values(users).find(u => u.key === key);
-
-        if (!user || ROLE_HIERARCHY[user.role] < ROLE_HIERARCHY[minRole]) {
-            return res.json({ 
-                success: false, 
-                message: `Require role: ${minRole} or higher` 
-            });
-        }
-        req.user = user;
-        next();
-    };
-};
-
-// ==================== ROOT & INFO ====================
+// ==================== ROOT & DASHBOARD ====================
 app.get('/', (req, res) => {
     res.json({
-        app: 'CYBERENG HIERARCHY SERVER',
+        app: 'CYBERENG-SERVER V4.0',
         status: 'online',
-        version: '3.0',
-        server_time: new Date().toISOString(),
+        version: '4.0',
         owner: 'ORGAN_GANTENG',
-        tunnel_url: req.headers.host,
-        endpoints: {
-            public: ['/validate', '/autoRegister', '/sendBug', '/refreshCoins', '/redeem'],
-            developer: ['/dev', '/dev/users', '/dev/addUser', '/dev/setRole', '/dev/setExpired', '/dev/setCoins'],
-            owner: ['/owner/addReseller', '/owner/addMember', '/owner/listUsers', '/owner/setExpired', '/owner/setCoins'],
-            reseller: ['/reseller/addMember', '/reseller/setExpired', '/reseller/setCoins'],
-            custom: ['/addServer', '/deleteUser', '/checkUpdate', '/getNews', '/listServers']
+        time: new Date().toISOString(),
+        quick_actions: {
+            seller_page: '/seller/dashboard?key=SELLER_KEY',
+            admin_panel: '/admin/dashboard?key=ADMIN_KEY'
+        },
+        stats: {
+            total_users: Object.keys(users).length,
+            total_servers: servers.length,
+            online_users: Object.keys(users).length
         }
     });
 });
 
-// ==================== DEVELOPER ENDPOINTS ====================
-app.get('/dev', requireRole('developer'), (req, res) => {
+// ==================== QUICK ACTIONS DASHBOARD ====================
+app.get('/dashboard', (req, res) => {
+    const { key } = req.query;
+    const user = Object.values(users).find(u => u.key === key);
+    
+    if (!user) {
+        return res.json({ success: false, message: 'Invalid key' });
+    }
+    
+    // DASHBOARD MENU SESUAI FOTO
     res.json({
-        server: 'CYBERENG HIERARCHY SERVER',
-        your_role: req.user.role,
-        users_count: Object.keys(users).length,
-        servers_count: servers.length,
-        roles_count: {
-            developer: Object.values(users).filter(u => u.role === 'developer').length,
-            owner: Object.values(users).filter(u => u.role === 'owner').length,
-            reseller: Object.values(users).filter(u => u.role === 'reseller').length,
-            member: Object.values(users).filter(u => u.role === 'member').length
+        success: true,
+        user: {
+            username: user.username,
+            role: user.role.toUpperCase(),
+            expired: user.expired,
+            coins: user.coins
+        },
+        quick_actions: [
+            {
+                id: 'seller_page',
+                title: 'Seller Page',
+                icon: '🏪',
+                description: 'Create accounts & extend durations',
+                endpoint: '/seller/dashboard',
+                accessible: ['owner', 'reseller', 'seller'].includes(user.role)
+            },
+            {
+                id: 'admin_panel',
+                title: 'Admin Panel',
+                icon: '🔧',
+                description: 'Delete users, create accounts, user list',
+                endpoint: '/admin/dashboard',
+                accessible: ['owner', 'developer'].includes(user.role)
+            }
+        ],
+        menus: {
+            seller_page: [
+                { title: 'Create New Account', type: 'form', fields: ['username', 'password', 'duration_days'] },
+                { title: 'Extend Account Duration', type: 'form', fields: ['username', 'additional_days'] }
+            ],
+            admin_panel: [
+                { title: 'Delete User', type: 'form', fields: ['username'] },
+                { title: 'Create Account', type: 'form', fields: ['username', 'password', 'duration_days', 'role'] },
+                { title: 'User List', type: 'list', filter: ['all', 'member', 'reseller', 'owner', 'vip', 'partner'] }
+            ]
         }
     });
 });
 
-app.get('/dev/users', requireRole('developer'), (req, res) => {
-    const userList = Object.values(users).map(u => ({
-        username: u.username,
-        role: u.role,
-        coins: u.coins,
-        expired: u.expired,
-        createdBy: u.createdBy,
-        key: u.key
+// ==================== SELLER PAGE SYSTEM ====================
+app.get('/seller/dashboard', (req, res) => {
+    const { key } = req.query;
+    const seller = Object.values(users).find(u => u.key === key && ['owner', 'reseller', 'seller'].includes(u.role));
+    
+    if (!seller) {
+        return res.json({ success: false, message: 'Akses ditolak. Hanya seller/owner/reseller' });
+    }
+    
+    // SELLER PAGE INTERFACE SESUAI FOTO
+    res.json({
+        success: true,
+        page: 'SELLER_PAGE',
+        title: 'Account Management',
+        subtitle: 'Create new accounts or extend existing ones',
+        
+        // MENU 1: CREATE NEW ACCOUNT (SESUAI FOTO)
+        create_account: {
+            title: 'Create New Account',
+            description: 'Create a new user account with specified duration',
+            fields: [
+                {
+                    name: 'username',
+                    type: 'text',
+                    placeholder: 'Enter username',
+                    required: true
+                },
+                {
+                    name: 'password',
+                    type: 'password',
+                    placeholder: 'Enter password',
+                    required: true
+                },
+                {
+                    name: 'duration_days',
+                    type: 'number',
+                    placeholder: 'Duration (days)',
+                    required: true,
+                    min: 1,
+                    max: 3650
+                }
+            ],
+            button_text: 'CREATE ACCOUNT',
+            endpoint: '/seller/createAccount'
+        },
+        
+        // MENU 2: EXTEND ACCOUNT DURATION (SESUAI FOTO)
+        extend_account: {
+            title: 'Extend Account Duration',
+            description: 'Add more days to an existing user account',
+            fields: [
+                {
+                    name: 'username',
+                    type: 'text',
+                    placeholder: 'Enter username',
+                    required: true
+                },
+                {
+                    name: 'additional_days',
+                    type: 'number',
+                    placeholder: 'Additional Days',
+                    required: true,
+                    min: 1,
+                    max: 3650
+                }
+            ],
+            button_text: 'UPDATE DURATION',
+            endpoint: '/seller/extendAccount'
+        },
+        
+        seller_info: {
+            name: seller.username,
+            role: seller.role,
+            can_create: true
+        }
+    });
+});
+
+// CREATE ACCOUNT - SELLER
+app.post('/seller/createAccount', (req, res) => {
+    const { seller_key, username, password, duration_days } = req.body;
+    
+    // Validasi
+    if (!seller_key || !username || !password || !duration_days) {
+        return res.json({
+            success: false,
+            message: "Semua field wajib diisi"
+        });
+    }
+    
+    const seller = Object.values(users).find(u => u.key === seller_key && ['owner', 'reseller', 'seller'].includes(u.role));
+    if (!seller) {
+        return res.json({
+            success: false,
+            message: "Seller tidak valid"
+        });
+    }
+    
+    if (users[username]) {
+        return res.json({
+            success: false,
+            message: "Username sudah digunakan"
+        });
+    }
+    
+    // Hitung expired date
+    const expiredDate = new Date();
+    expiredDate.setDate(expiredDate.getDate() + parseInt(duration_days));
+    const expiredStr = expiredDate.toISOString().split('T')[0];
+    
+    // Generate user ID
+    const userId = "USR" + Date.now() + Math.floor(Math.random() * 1000);
+    
+    // Buat user baru
+    users[username] = {
+        userId: userId,
+        username: username,
+        password: password,
+        key: randomHex(16),
+        role: 'member',
+        coins: 0,
+        expired: expiredStr,
+        createdBy: seller.username,
+        parent: seller.username,
+        createdAt: new Date().toISOString(),
+        seller: seller.username
+    };
+    
+    res.json({
+        success: true,
+        message: `✅ Account ${username} created successfully!`,
+        account_details: {
+            username: username,
+            password: password,
+            expired_date: expiredStr,
+            duration_days: duration_days,
+            role: 'member',
+            created_by: seller.username
+        }
+    });
+});
+
+// EXTEND ACCOUNT - SELLER
+app.post('/seller/extendAccount', (req, res) => {
+    const { seller_key, username, additional_days } = req.body;
+    
+    if (!seller_key || !username || !additional_days) {
+        return res.json({
+            success: false,
+            message: "Semua field wajib diisi"
+        });
+    }
+    
+    const seller = Object.values(users).find(u => u.key === seller_key && ['owner', 'reseller', 'seller'].includes(u.role));
+    if (!seller) {
+        return res.json({
+            success: false,
+            message: "Seller tidak valid"
+        });
+    }
+    
+    const user = users[username];
+    if (!user) {
+        return res.json({
+            success: false,
+            message: "User tidak ditemukan"
+        });
+    }
+    
+    // Cek apakah seller adalah parent dari user ini
+    if (user.parent !== seller.username && seller.role !== 'owner') {
+        return res.json({
+            success: false,
+            message: "Tidak memiliki izin untuk user ini"
+        });
+    }
+    
+    // Perpanjang masa aktif
+    const currentExpired = new Date(user.expired);
+    const newExpired = new Date(currentExpired);
+    newExpired.setDate(newExpired.getDate() + parseInt(additional_days));
+    user.expired = newExpired.toISOString().split('T')[0];
+    
+    res.json({
+        success: true,
+        message: `✅ Account ${username} extended by ${additional_days} days`,
+        new_expired: user.expired,
+        additional_days: additional_days
+    });
+});
+
+// ==================== ADMIN PANEL SYSTEM ====================
+app.get('/admin/dashboard', (req, res) => {
+    const { key } = req.query;
+    const admin = Object.values(users).find(u => u.key === key && ['owner', 'developer'].includes(u.role));
+    
+    if (!admin) {
+        return res.json({ success: false, message: 'Akses ditolak. Hanya admin/owner/developer' });
+    }
+    
+    // ADMIN PANEL INTERFACE SESUAI FOTO
+    res.json({
+        success: true,
+        page: 'ADMIN_PANEL',
+        title: 'Admin Panel',
+        
+        // MENU NAVIGASI (SESUAI FOTO)
+        navigation: [
+            { id: 'delete_user', title: 'Delete User', icon: '🗑️' },
+            { id: 'create_account', title: 'Create Account', icon: '👤' },
+            { id: 'user_list', title: 'User List', icon: '📋' }
+        ],
+        
+        // DELETE USER SECTION (SESUAI FOTO)
+        delete_user_section: {
+            title: 'Delete User',
+            description: 'Permanently remove a user from the system',
+            fields: [
+                {
+                    name: 'username',
+                    type: 'text',
+                    placeholder: 'Enter username to delete',
+                    required: true
+                }
+            ],
+            button_text: 'DELETE USER',
+            endpoint: '/admin/deleteUser',
+            warning: 'This action cannot be undone!'
+        },
+        
+        // CREATE ACCOUNT SECTION (SESUAI FOTO)
+        create_account_section: {
+            title: 'Create Account',
+            description: 'Add a new user to the system',
+            fields: [
+                {
+                    name: 'username',
+                    type: 'text',
+                    placeholder: 'Enter username',
+                    required: true
+                },
+                {
+                    name: 'password',
+                    type: 'password',
+                    placeholder: 'Enter password',
+                    required: true
+                },
+                {
+                    name: 'duration_days',
+                    type: 'number',
+                    placeholder: 'Enter duration in days',
+                    required: true,
+                    min: 1,
+                    max: 3650
+                },
+                {
+                    name: 'role',
+                    type: 'select',
+                    options: [
+                        { value: 'member', label: 'MEMBER' },
+                        { value: 'vip', label: 'VIP' },
+                        { value: 'reseller', label: 'RESELLER' },
+                        { value: 'partner', label: 'PARTNER' },
+                        { value: 'owner', label: 'OWNER' }
+                    ],
+                    default: 'member',
+                    required: true
+                }
+            ],
+            button_text: 'CREATE ACCOUNT',
+            endpoint: '/admin/createAccount'
+        },
+        
+        // USER LIST SECTION (SESUAI FOTO)
+        user_list_section: {
+            title: 'User List',
+            filter: {
+                label: 'Filter by Role:',
+                options: [
+                    { value: 'all', label: 'ALL' },
+                    { value: 'member', label: 'MEMBER' },
+                    { value: 'vip', label: 'VIP' },
+                    { value: 'reseller', label: 'RESELLER' },
+                    { value: 'owner', label: 'OWNER' },
+                    { value: 'partner', label: 'PARTNER' }
+                ],
+                default: 'all'
+            },
+            columns: ['Username', 'Role', 'Expired', 'Parent', 'Actions'],
+            endpoint: '/admin/userList',
+            actions: [
+                { type: 'delete', icon: '🗑️', color: 'red', endpoint: '/admin/deleteUser' }
+            ]
+        },
+        
+        admin_info: {
+            name: admin.username,
+            role: admin.role,
+            permissions: ['create', 'delete', 'view_all']
+        }
+    });
+});
+
+// ADMIN CREATE ACCOUNT WITH ROLE (SESUAI FOTO)
+app.post('/admin/createAccount', (req, res) => {
+    const { admin_key, username, password, duration_days, role } = req.body;
+    
+    if (!admin_key || !username || !password || !duration_days || !role) {
+        return res.json({
+            success: false,
+            message: "Semua field wajib diisi"
+        });
+    }
+    
+    const admin = Object.values(users).find(u => u.key === admin_key && ['owner', 'developer'].includes(u.role));
+    if (!admin) {
+        return res.json({
+            success: false,
+            message: "Admin tidak valid"
+        });
+    }
+    
+    if (users[username]) {
+        return res.json({
+            success: false,
+            message: "Username sudah digunakan"
+        });
+    }
+    
+    // Validasi role
+    const validRoles = ['member', 'vip', 'reseller', 'partner', 'owner'];
+    if (!validRoles.includes(role.toLowerCase())) {
+        return res.json({
+            success: false,
+            message: "Role tidak valid"
+        });
+    }
+    
+    // Hitung expired date
+    const expiredDate = new Date();
+    expiredDate.setDate(expiredDate.getDate() + parseInt(duration_days));
+    const expiredStr = expiredDate.toISOString().split('T')[0];
+    
+    // Tentukan coins berdasarkan role
+    const roleCoins = {
+        'member': 0,
+        'vip': 50000,
+        'reseller': 100000,
+        'partner': 75000,
+        'owner': 500000
+    };
+    
+    // Generate user ID
+    const userId = "USR" + Date.now() + Math.floor(Math.random() * 1000);
+    
+    // Buat user baru
+    users[username] = {
+        userId: userId,
+        username: username,
+        password: password,
+        key: randomHex(16),
+        role: role.toLowerCase(),
+        coins: roleCoins[role.toLowerCase()] || 0,
+        expired: expiredStr,
+        createdBy: admin.username,
+        parent: 'SYSTEM',
+        createdAt: new Date().toISOString(),
+        is_admin_created: true
+    };
+    
+    res.json({
+        success: true,
+        message: `✅ Account ${username} created as ${role.toUpperCase()}!`,
+        account_details: {
+            username: username,
+            password: password,
+            role: role.toUpperCase(),
+            expired_date: expiredStr,
+            duration_days: duration_days,
+            coins: roleCoins[role.toLowerCase()] || 0,
+            created_by: admin.username
+        }
+    });
+});
+
+// ADMIN DELETE USER
+app.post('/admin/deleteUser', (req, res) => {
+    const { admin_key, username } = req.body;
+    
+    if (!admin_key || !username) {
+        return res.json({
+            success: false,
+            message: "Username wajib diisi"
+        });
+    }
+    
+    const admin = Object.values(users).find(u => u.key === admin_key && ['owner', 'developer'].includes(u.role));
+    if (!admin) {
+        return res.json({
+            success: false,
+            message: "Admin tidak valid"
+        });
+    }
+    
+    if (!users[username]) {
+        return res.json({
+            success: false,
+            message: "User tidak ditemukan"
+        });
+    }
+    
+    // Jangan hapus user utama
+    const protectedUsers = ['developer', 'organ', 'owner1'];
+    if (protectedUsers.includes(username)) {
+        return res.json({
+            success: false,
+            message: "Tidak dapat menghapus user utama"
+        });
+    }
+    
+    // Hapus user
+    const deletedUser = users[username];
+    delete users[username];
+    
+    res.json({
+        success: true,
+        message: `✅ User ${username} deleted permanently!`,
+        deleted_user: {
+            username: username,
+            role: deletedUser.role,
+            expired: deletedUser.expired
+        }
+    });
+});
+
+// ADMIN USER LIST WITH FILTER (SESUAI FOTO)
+app.get('/admin/userList', (req, res) => {
+    const { admin_key, filter_role } = req.query;
+    
+    const admin = Object.values(users).find(u => u.key === admin_key && ['owner', 'developer'].includes(u.role));
+    if (!admin) {
+        return res.json({ success: false, message: 'Akses ditolak' });
+    }
+    
+    let userList = Object.values(users);
+    
+    // Filter berdasarkan role jika ada
+    if (filter_role && filter_role !== 'all') {
+        userList = userList.filter(user => user.role === filter_role.toLowerCase());
+    }
+    
+    // Format data sesuai tampilan di foto
+    const formattedUsers = userList.map(user => ({
+        username: user.username,
+        role: user.role.toUpperCase(),
+        expired: user.expired,
+        parent: user.parent || 'SYSTEM',
+        coins: user.coins,
+        created_at: user.createdAt || 'N/A',
+        can_delete: !['developer', 'organ', 'owner1'].includes(user.username)
     }));
-    res.json({ 
-        success: true, 
-        users: userList 
+    
+    res.json({
+        success: true,
+        filter_applied: filter_role || 'all',
+        total_users: formattedUsers.length,
+        users: formattedUsers,
+        columns: [
+            { key: 'username', label: 'Username' },
+            { key: 'role', label: 'Role' },
+            { key: 'expired', label: 'Expired' },
+            { key: 'parent', label: 'Parent' },
+            { key: 'actions', label: 'Actions' }
+        ]
     });
 });
 
-app.post('/dev/addUser', requireRole('developer'), (req, res) => {
-    const { username, password, role, coins, expired } = req.body;
+// ==================== MYINFO ENDPOINT (FIX) ====================
+app.get('/myinfo', (req, res) => {
+    const { username, password, key } = req.query;
     
-    if (users[username]) {
+    if (!username || !password || !key) {
+        return res.json({
+            valid: false,
+            message: "Parameter tidak lengkap"
+        });
+    }
+    
+    const user = users[username];
+    
+    if (!user || user.password !== password || user.key !== key) {
         return res.json({ 
-            success: false, 
-            message: 'Username exists' 
+            valid: false, 
+            message: 'Invalid credentials' 
         });
     }
 
-    // Validasi expired date
-    let expiredDate = expired || '9999-12-31';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
-        expiredDate = '9999-12-31';
-    }
-
-    // Coins unlimited untuk developer
-    const userCoins = coins !== undefined ? parseInt(coins) : 
-                     (role === 'developer' ? 999999999 : 
-                      role === 'owner' ? 500000 : 
-                      role === 'reseller' ? 100000 : 0);
-
-    users[username] = {
-        username,
-        password: password || '123456',
-        key: randomHex(16),
-        role: role || 'member',
-        coins: userCoins,
-        expired: expiredDate,
-        createdBy: req.user.username
-    };
-
-    logs.push({
-        action: 'dev_create_user',
-        by: req.user.username,
-        target: username,
-        role: role,
-        coins: userCoins,
-        expired: expiredDate,
-        timestamp: new Date().toISOString()
-    });
-
     res.json({
-        success: true,
-        message: `✅ User ${username} created with role ${role}`,
-        user: users[username]
+        valid: true,
+        username: user.username,
+        role: user.role,
+        coins: user.coins,
+        expired: user.expired,
+        key: user.key,
+        createdBy: user.createdBy,
+        parent: user.parent
     });
 });
 
-// ==================== OWNER ENDPOINTS ====================
-app.post('/owner/addReseller', requireRole('owner'), (req, res) => {
-    const { username, password, coins, expired } = req.body;
-    
-    if (users[username]) {
-        return res.json({ 
-            success: false, 
-            message: 'Username exists' 
-        });
-    }
-
-    const userCoins = coins !== undefined ? parseInt(coins) : 100000;
-    let expiredDate = expired || '2025-12-31';
-    
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
-        expiredDate = '2025-12-31';
-    }
-
-    users[username] = {
-        username,
-        password: password || 'reseller123',
-        key: randomHex(16),
-        role: 'reseller',
-        coins: userCoins,
-        expired: expiredDate,
-        createdBy: req.user.username
-    };
-
-    res.json({
-        success: true,
-        message: `✅ Reseller ${username} created`,
-        user: users[username]
-    });
-});
-
-app.post('/owner/addMember', requireRole('owner'), (req, res) => {
-    const { username, password, coins, expired } = req.body;
-    
-    if (users[username]) {
-        return res.json({ 
-            success: false, 
-            message: 'Username exists' 
-        });
-    }
-
-    const userCoins = coins !== undefined ? parseInt(coins) : 0;
-    let expiredDate = expired || '2024-12-31';
-    
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
-        expiredDate = '2024-12-31';
-    }
-
-    users[username] = {
-        username,
-        password: password || 'member123',
-        key: randomHex(16),
-        role: 'member',
-        coins: userCoins,
-        expired: expiredDate,
-        createdBy: req.user.username
-    };
-
-    res.json({
-        success: true,
-        message: `✅ Member ${username} created`,
-        user: users[username]
-    });
-});
-
-// ==================== RESELLER ENDPOINTS ====================
-app.post('/reseller/addMember', requireRole('reseller'), (req, res) => {
-    const { username, password, coins, expired } = req.body;
-    
-    if (users[username]) {
-        return res.json({ 
-            success: false, 
-            message: 'Username exists' 
-        });
-    }
-
-    const maxCoins = 5000;
-    const userCoins = Math.min(coins !== undefined ? parseInt(coins) : 0, maxCoins);
-    
-    let expiredDate = expired;
-    if (!expiredDate || !/^\d{4}-\d{2}-\d{2}$/.test(expiredDate)) {
-        const date = new Date();
-        date.setDate(date.getDate() + 30);
-        expiredDate = date.toISOString().split('T')[0];
-    }
-
-    users[username] = {
-        username,
-        password: password || 'member123',
-        key: randomHex(16),
-        role: 'member',
-        coins: userCoins,
-        expired: expiredDate,
-        createdBy: req.user.username
-    };
-
-    res.json({
-        success: true,
-        message: `✅ Member ${username} created`,
-        user: users[username]
-    });
-});
-
-// ==================== PUBLIC ENDPOINTS (FOR APK) ====================
+// ==================== VALIDATE ENDPOINT (FIX) ====================
 app.post('/validate', (req, res) => {
     const { username, password, androidId } = req.body;
     const user = users[username];
-
-    console.log(`[VALIDATE] Username: ${username}, AndroidID: ${androidId}`);
 
     if (!user || user.password !== password) {
         return res.json({ 
@@ -288,9 +650,8 @@ app.post('/validate', (req, res) => {
     const currentDate = new Date().toISOString().split('T')[0];
     const isExpired = user.expired < currentDate;
 
-    // 🔥 LIST BUG 25 ITEM
+    // LIST BUG 25 ITEM
     const listBug = [
-        // === BUG YANG LU REQUEST (9 ITEM) ===
         { bug_id: 'invisible', bug_name: 'DELAY INVISIBLE', price: 50 },
         { bug_id: 'ios_invis', bug_name: 'FC IOS INVISIBLE', price: 75 },
         { bug_id: 'forcloseonemsg', bug_name: 'FC ONE MESSAGE', price: 100 },
@@ -300,8 +661,6 @@ app.post('/validate', (req, res) => {
         { bug_id: 'kill_android', bug_name: 'KILL ANDROID', price: 600 },
         { bug_id: 'blank_ui', bug_name: 'BLANK UI', price: 180 },
         { bug_id: 'kill_ios', bug_name: 'KILL IOS', price: 700 },
-        
-        // === TAMBAHAN PREMIUM (16 BUG) ===
         { bug_id: 'android_invis', bug_name: 'ANDROID INVISIBLE', price: 60 },
         { bug_id: 'double_invis', bug_name: 'DOUBLE TICK INVISIBLE', price: 100 },
         { bug_id: 'forclosechat', bug_name: 'FC ENTIRE CHAT', price: 150 },
@@ -328,27 +687,25 @@ app.post('/validate', (req, res) => {
         role: user.role,
         coins: user.coins,
         listBug: listBug,
-        news: [
+        quick_actions: [
             {
-                image: 'https://i.imgur.com/6JpYX9W.png',
-                title: 'HIERARCHY SYSTEM',
-                desc: `Role: ${user.role.toUpperCase()} | Expired: ${user.expired}`
+                id: 'seller_page',
+                title: 'Seller Page',
+                endpoint: '/seller/dashboard?key=' + user.key,
+                available: ['owner', 'reseller', 'seller'].includes(user.role)
             },
             {
-                image: 'https://i.imgur.com/VX5p2Fz.png',
-                title: 'COINS BALANCE',
-                desc: `You have: ${user.coins} coins`
-            },
-            {
-                image: 'https://i.imgur.com/abc123.png',
-                title: 'SERVER STATUS',
-                desc: `Connected to: ${req.headers.host}`
+                id: 'admin_panel',
+                title: 'Admin Panel',
+                endpoint: '/admin/dashboard?key=' + user.key,
+                available: ['owner', 'developer'].includes(user.role)
             }
         ],
-        servers: servers.slice(0, 15)
+        servers: servers.slice(0, 10)
     });
 });
 
+// ==================== ENDPOINT LAINNYA ====================
 app.post('/autoRegister', (req, res) => {
     const { androidId } = req.body;
     const username = `user_${randomString(6).toLowerCase()}`;
@@ -358,14 +715,19 @@ app.post('/autoRegister', (req, res) => {
     expiredDate.setDate(expiredDate.getDate() + 7);
     const expiredStr = expiredDate.toISOString().split('T')[0];
 
+    const userId = "USR" + Date.now();
+
     users[username] = {
+        userId: userId,
         username,
         password,
         key: randomHex(16),
         role: 'member',
         coins: 100,
         expired: expiredStr,
-        createdBy: 'system'
+        createdBy: 'system',
+        parent: 'SYSTEM',
+        createdAt: new Date().toISOString()
     };
 
     res.json({
@@ -394,7 +756,9 @@ app.get('/sendBug', (req, res) => {
         developer: 0, 
         owner: 10, 
         reseller: 25, 
-        member: 50 
+        member: 50,
+        vip: 30,
+        partner: 40
     };
     const price = bugPrices[user.role] || 50;
 
@@ -437,42 +801,23 @@ app.get('/refreshCoins', (req, res) => {
     });
 });
 
-app.get('/redeem', (req, res) => {
-    const { key, code } = req.query;
-    const user = Object.values(users).find(u => u.key === key);
-
-    if (!user) {
-        return res.json({ valid: false });
-    }
-
-    const validCodes = {
-        'DEV2024': { role: 'developer', coins: 999999 },
-        'OWNERPASS': { role: 'owner', coins: 50000 },
-        'RESELLERBONUS': { role: 'reseller', coins: 10000 },
-        'MEMBERFREE': { role: 'member', coins: 1000 },
-        'ORGAN123': { role: 'developer', coins: 999999999 }
-    };
-
-    if (validCodes[code] && ROLE_HIERARCHY[user.role] >= ROLE_HIERARCHY[validCodes[code].role]) {
-        user.coins += validCodes[code].coins;
-        res.json({
-            valid: true,
-            success: true,
-            coins: user.coins,
-            message: `🎉 Kode ${code} berhasil! +${validCodes[code].coins} coins`
-        });
-    } else {
-        res.json({ 
-            valid: true, 
-            success: false, 
-            message: '❌ Kode tidak valid atau role tidak cukup' 
-        });
-    }
-});
-
-// ==================== CUSTOM ENDPOINTS (DARI APK) ====================
 app.post('/addServer', (req, res) => {
-    const { server_ip, server_port, server_name } = req.body;
+    const { server_ip, server_port, server_name, key } = req.body;
+
+    if (!key) {
+        return res.json({
+            success: false,
+            message: "Key diperlukan"
+        });
+    }
+
+    const user = Object.values(users).find(u => u.key === key);
+    if (!user) {
+        return res.json({
+            success: false,
+            message: "User tidak ditemukan"
+        });
+    }
 
     const newServer = {
         id: servers.length + 1,
@@ -481,7 +826,8 @@ app.post('/addServer', (req, res) => {
         name: server_name || 'Game Server',
         added_at: new Date().toISOString(),
         status: 'active',
-        players: Math.floor(Math.random() * 100) + 1
+        players: Math.floor(Math.random() * 100) + 1,
+        added_by: user.username
     };
 
     servers.push(newServer);
@@ -494,38 +840,13 @@ app.post('/addServer', (req, res) => {
     });
 });
 
-app.get('/deleteUser', (req, res) => {
-    const { key, username } = req.query;
-
-    if (key !== 'dev007dev007dev0') {
-        return res.json({
-            success: false,
-            message: 'Invalid developer key'
-        });
-    }
-
-    if (users[username]) {
-        delete users[username];
-        res.json({
-            success: true,
-            message: `✅ User ${username} deleted successfully!`,
-            remaining_users: Object.keys(users).length
-        });
-    } else {
-        res.json({
-            success: false,
-            message: `❌ User ${username} not found!`
-        });
-    }
-});
-
 app.get('/checkUpdate', (req, res) => {
     res.json({
         update_available: false,
-        current_version: "1.0.0",
-        latest_version: "1.0.0",
+        current_version: "4.0",
+        latest_version: "4.0",
         force_update: false,
-        changelog: "• Fixed server connection issues\n• Improved performance\n• Added new bug features",
+        changelog: "• Added Seller Page with Create Account & Extend Duration\n• Added Admin Panel with Delete User, Create Account, User List\n• User List with filter by role\n• Added role VIP, RESELLER, OWNER, MEMBER, PARTNER\n• Fixed /myinfo endpoint\n• Fixed /validate endpoint\n• 25 bug features available",
         download_url: "https://example.com/cybereng-update.apk"
     });
 });
@@ -535,22 +856,22 @@ app.get('/getNews', (req, res) => {
         news: [
             {
                 id: 1,
-                title: "🎉 CYBERENG REPLICA ACTIVE!",
-                content: "Server replica berhasil dijalankan oleh ORGAN_GANTENG",
+                title: "🎉 SELLER PAGE RELEASED!",
+                content: "Fitur Seller Page dengan create account dan extend duration sekarang aktif",
                 date: new Date().toISOString(),
                 image: "https://i.imgur.com/6JpYX9W.png"
             },
             {
                 id: 2,
-                title: "📱 TUNNEL CONNECTION SUCCESS",
-                content: `Connected via: ${req.headers.host}`,
+                title: "🔧 ADMIN PANEL UPDATE",
+                content: "Admin panel dengan delete user, create account, dan user list filter",
                 date: new Date().toISOString(),
                 image: "https://i.imgur.com/VX5p2Fz.png"
             },
             {
                 id: 3,
-                title: "⚡ HIERARCHY SYSTEM READY",
-                content: "Role system: Developer → Owner → Reseller → Member",
+                title: "📱 USER LIST FILTER",
+                content: "Filter user by role: MEMBER, VIP, RESELLER, OWNER, PARTNER",
                 date: new Date().toISOString(),
                 image: "https://i.imgur.com/abc123.png"
             }
@@ -558,59 +879,46 @@ app.get('/getNews', (req, res) => {
     });
 });
 
-app.get('/listServers', (req, res) => {
-    res.json({
-        success: true,
-        servers: servers.slice(0, 20),
-        total: servers.length
-    });
-});
-
-// ==================== ERROR HANDLING ====================
-app.use((req, res) => {
-    res.status(404).json({ 
-        error: 'Endpoint not found' 
-    });
-});
-
-app.use((err, req, res, next) => {
-    console.error('Server error:', err);
-    res.status(500).json({ 
-        error: 'Internal server error' 
-    });
-});
-
 // ==================== START SERVER ====================
 app.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════╗
-║    🚀 CYBERENG HIERARCHY SERVER v3.0                    ║
+║    🚀 CYBERENG-SERVER V4.0 - COMPLETE EDITION           ║
 ║    Port: ${PORT}                                             ║
-║    Mode: 25 BUGS + FULL HIERARCHY                       ║
-║    Developer: developer / dev2024                       ║
-║    Owner: owner1 / owner123                             ║
-║    Reseller: [buat via owner]                           ║
-║    Bug Count: 25                                        ║
+║    Owner: ORGAN_GANTENG                                 ║
+║    Features:                                            ║
+║    ✅ Seller Page (Create Account, Extend Duration)     ║
+║    ✅ Admin Panel (Delete User, Create Account)         ║
+║    ✅ User List with Filter & Delete Button            ║
+║    ✅ 25 Bug Features                                   ║
+║    ✅ /myinfo & /validate Fixed                        ║
+║    ✅ Role: VIP, RESELLER, OWNER, MEMBER, PARTNER      ║
 ╚══════════════════════════════════════════════════════════╝
     `);
     
-    console.log(`📡 Developer Endpoints:`);
-    console.log(`   POST /dev/addUser     - {username, password, role, coins, expired, key}`);
-    console.log(`   GET  /dev/users       - ?key=dev007dev007dev0`);
+    console.log(`📊 QUICK ACCESS:`);
+    console.log(`   Login: organ / organ123`);
+    console.log(`   Key: 677890`);
+    console.log(`   Seller Page: /seller/dashboard?key=677890`);
+    console.log(`   Admin Panel: /admin/dashboard?key=677890`);
     
-    console.log(`\n👑 Owner Endpoints:`);
-    console.log(`   POST /owner/addReseller - {username, password, coins?, expired?, key=OWNER_KEY}`);
-    console.log(`   POST /owner/addMember   - {username, password, coins?, expired?, key=OWNER_KEY}`);
+    console.log(`\n🔧 MAIN ENDPOINTS:`);
+    console.log(`   POST /validate       - Login user`);
+    console.log(`   GET  /myinfo         - User info`);
+    console.log(`   GET  /dashboard      - Quick actions`);
+    console.log(`   POST /addServer      - Add server`);
+    console.log(`   GET  /sendBug        - Send bug`);
     
-    console.log(`\n💼 Reseller Endpoints:`);
-    console.log(`   POST /reseller/addMember - {username, password, coins?(max5000), expired?, key=RESELLER_KEY}`);
+    console.log(`\n🏪 SELLER PAGE:`);
+    console.log(`   GET  /seller/dashboard          - Seller page interface`);
+    console.log(`   POST /seller/createAccount      - Create new account`);
+    console.log(`   POST /seller/extendAccount      - Extend account duration`);
     
-    console.log(`\n📱 Public Endpoints (for APK):`);
-    console.log(`   POST /validate       - {username, password}`);
-    console.log(`   GET  /sendBug        - ?key=XXX&bug_id=XXX&target=XXX`);
-    console.log(`   POST /addServer      - {server_ip, server_port, server_name}`);
-    console.log(`   GET  /refreshCoins   - ?key=XXX`);
-    console.log(`   GET  /redeem         - ?key=XXX&code=XXX`);
+    console.log(`\n🔧 ADMIN PANEL:`);
+    console.log(`   GET  /admin/dashboard          - Admin panel interface`);
+    console.log(`   POST /admin/createAccount      - Create account with role`);
+    console.log(`   POST /admin/deleteUser         - Delete user permanently`);
+    console.log(`   GET  /admin/userList           - User list with filter`);
     
     console.log(`\n✅ Server ready!`);
     console.log(`🌐 URL: ${process.env.RAILWAY_STATIC_URL || `http://localhost:${PORT}`}`);
