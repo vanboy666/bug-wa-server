@@ -1,20 +1,14 @@
 {
   "name": "bug-wa-server",
   "version": "4.0.0",
-  "description": "Cybereng Server - Complete features",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node server.js"
   },
-  "keywords": ["cybereng", "bug-wa", "server"],
-  "author": "ORGAN_GANTENG",
-  "license": "ISC",
   "dependencies": {
     "express": "^4.18.2"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/vanboy666/bug-wa-server.git"
+  "engines": {
+    "node": ">=24.0.0"
   }
 }
